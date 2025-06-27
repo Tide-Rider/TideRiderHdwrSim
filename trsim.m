@@ -9,14 +9,18 @@
 % Revision History
 % 2025-04-14    mvj    Created.
 % 2025-04-18    mvj    added current; untested.  TR sleeps a lot; will need to update state on timeout, not just async.
+% 2025-05-16    mvj    added ui window for sending passthru.
+
+
 
 
 if exist('s','var')
     s.delete();
 end
 
+s = serialport('COM4',9600);
 %s = serialport('/dev/ttyACM0',9600);
-s = serialport('/dev/ttyUSB0',9600,'Timeout',1);
+%s = serialport('/dev/ttyUSB0',9600,'Timeout',1);
 configureTerminator(s,'CR/LF');
 
 s.flush();
@@ -55,14 +59,34 @@ hwp = line(NaN,NaN,'linestyle','none','marker','o','markerfacecolor',[0 0.5 0],'
 xlim(LON0 + 0.001*[-1 1]);
 ylim(LAT0 + 0.001*[-1 1]);
 
+% to insert commands
+% $SMPAS,<cmd>*00  Note - generally TR cmds end with a ','
+if exist('uifig','var'); delete uifig; end    
+uifig = uifigure('Name', 'Passthru');
+
+% Add a label
+uilabel(uifig, ...
+    'Text', 'Send:', ...
+    'Position', [50, 120, 100, 30]);
+
+% Add a text input field
+textInput = uieditfield(uifig, 'text', ...
+    'Position', [160, 120, 180, 30]);
+
+% Add a button to display the input
+uibutton(uifig, ...
+    'Text', 'Send', ...
+    'Position', [160, 70, 100, 30], ...
+    'ButtonPushedFcn', @(btn, event) writeline(s,textInput.Value));
+
 t_ = t0;
 thrcmd = 1500;  % neutral.
 while(1)
 
     % code is query/response so no need for threading.
     ln = s.readline();  % returns empty on timeout.
-    if ~isempty(ln) 
-
+    
+    if ~isempty(ln)
         if ln.startsWith("$TRSMQ")
             
             fprintf(1,'Got sim query.\n');
@@ -70,11 +94,13 @@ while(1)
             if ln.startsWith("$TRSMQ,BRD");
                 
                 fprintf(1,'Got BRD request.\n');
-                s.writeline(sprintf("$SMBRD,%.3f,m,0,C*00",z));
+                sprintf("$SMBRD,%.3f,m,0,C*00",z-zs)
+                s.writeline(sprintf("$SMBRD,%.3f,m,0,C*00",z-zs)); % pressure
                 
             elseif ln.startsWith("$TRSMQ,FIX");
                 
                 fprintf(1,'Got FIX request.\n');
+                sprintf("$SMFIX,%.6f,%.6f,V*00",lat,lon)
                 s.writeline(sprintf("$SMFIX,%.6f,%.6f,V*00",lat,lon));
                 
             end
@@ -141,7 +167,7 @@ while(1)
     figure(2);
     set(htr2,'xdata',lon,'ydata',lat);
     set(hwp,'xdata',LON0,'ydata',LAT0);  % no mechanism to synchronize WPTs between device and this code. (could be added).
-
+    
 end
 
 s.delete();
